@@ -8,6 +8,7 @@ var _ = require('lodash');
 var gcloud = require('gcloud');
 var concat = require('concat-stream');
 var mime = require('mime');
+var gm = require('gm');
 
 /**
  * skipper-gcs
@@ -20,6 +21,7 @@ module.exports = function GCSStore(globalOpts) {
   _.defaults(globalOpts, {
     email: '',
     bucket: '',
+    folder: 'photos',
     scopes: ['https://www.googleapis.com/auth/devstorage.full_control']
   });
   var gcs = gcloud.storage({
@@ -29,8 +31,10 @@ module.exports = function GCSStore(globalOpts) {
   var bucket = gcs.bucket(globalOpts.bucket);
 
   var adapter = {
-    ls: function(dirname, cb) {
-      bucket.getFiles({ prefix: dirname }, function(err, files) {
+    ls: function (dirname, cb) {
+      bucket.getFiles({
+        prefix: dirname
+      }, function (err, files) {
         if (err) {
           cb(err)
         } else {
@@ -39,23 +43,25 @@ module.exports = function GCSStore(globalOpts) {
         }
       });
     },
-    read: function(fd, cb) {
+    read: function (fd, cb) {
       var remoteReadStream = bucket.file(fd).createReadStream();
       remoteReadStream
-        .on('error', function(err) {
+        .on('error', function (err) {
           cb(err);
         })
-        .on('response', function(response) {
+        .on('response', function (response) {
           // Server connected and responded with the specified status and headers.
         })
-        .on('end', function() {
+        .on('end', function () {
           // The file is fully downloaded.
         })
-        .pipe(concat(function(data) {
+        .pipe(concat(function (data) {
           cb(null, data);
         }));
     },
-    rm: function(fd, cb) { return cb(new Error('TODO')); },
+    rm: function (fd, cb) {
+      return cb(new Error('TODO'));
+    },
     /**
      * A simple receiver for Skipper that writes Upstreams to Google Cloud Storage
      *
@@ -75,22 +81,70 @@ module.exports = function GCSStore(globalOpts) {
         var metadata = {};
         _.defaults(metadata, options.metadata);
         metadata.contentType = mime.lookup(__newFile.fd);
-        var file = bucket.file(__newFile.fd);
-        var stream = file.createWriteStream({
-          metadata: metadata
-        });
-        stream.on('error', function(err) {
-          receiver__.emit('error', err);
-          return;
-        })
-        stream.on('finish', function() {
-          __newFile.extra = file.metadata;
-          __newFile.extra.Location = 'https://storage.googleapis.com/' + globalOpts.bucket + '/' + __newFile.fd;
-          if(globalOpts.public) file.makePublic();
-          done();
-        });
-        __newFile.pipe(stream);
+        var allUploads = [];
+        allUploads.push(new Promise((resolve, reject) => {
+          var file = bucket.file(globalOpts.folder + '/' + __newFile.fd);
+          var stream = file.createWriteStream({
+            metadata: metadata
+          });
+          stream.on('error', function (err) {
+            reject(err)
+            return;
+          })
+          stream.on('finish', function () {
+            __newFile.extra = file.metadata;
+            __newFile.extra.Location = 'https://storage.googleapis.com/' + globalOpts.bucket + '/photos/' + __newFile.fd;
+            if (globalOpts.public) file.makePublic();
+            resolve();
+          });
+          __newFile.pipe(stream);
+        }))
+        if (globalOpts.resize) {
+          allUploads.push(new Promise((resolve, reject) => {
+            var file = bucket.file('photos/resized/' + __newFile.fd);
+            var stream = file.createWriteStream({
+              metadata: metadata
+            });
+            gm(__newFile)
+              .resize(300 + '>')
+              .gravity('Center')
+              .stream()
+              .pipe(stream)
+            stream.on('error', function (err) {
+              reject(err)
+              return;
+            })
+            stream.on('finish', function () {
+              if (globalOpts.public) file.makePublic();
+              resolve();
+            });
+          }))
+
+          // Add thumb
+          allUploads.push(new Promise((resolve, reject) => {
+            var file = bucket.file('photos/thumbs/' + __newFile.fd);
+            var stream = file.createWriteStream({
+              metadata: metadata
+            });
+            gm(__newFile)
+              .resize(100, 100, "^")
+              .gravity('Center')
+              .crop('100', '100')
+              .stream()
+              .pipe(stream)
+            stream.on('error', function (err) {
+              reject(err)
+              return;
+            })
+            stream.on('finish', function () {
+              if (globalOpts.public) file.makePublic();
+              resolve();
+            });
+          }))
+        }
+        Promise.all(allUploads).then(() => done()).catch(err => receiver__.emit('error', err));
       }
+
       return receiver__;
     }
   };
