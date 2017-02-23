@@ -93,7 +93,7 @@ module.exports = function GCSStore(globalOpts) {
           })
           stream.on('finish', function () {
             __newFile.extra = file.metadata;
-            __newFile.extra.Location = 'https://storage.googleapis.com/' + globalOpts.bucket + '/photos/' + __newFile.fd;
+            __newFile.extra.Location = 'https://storage.googleapis.com/' + globalOpts.bucket + '/' + globalOpts.folder + '/' + __newFile.fd;
             if (globalOpts.public) file.makePublic();
             resolve();
           });
