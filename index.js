@@ -83,7 +83,7 @@ module.exports = function GCSStore(globalOpts) {
         metadata.contentType = mime.lookup(__newFile.fd);
         const allUploads = [];
         allUploads.push(new Promise((resolve, reject) => {
-          const file = bucket.file(`${globalOpts.folder}/${__newFile.fd}`);
+          const file = bucket.file(`${globalOpts.folder}/${__newFile.fd}.jpg`);
           const stream = file.createWriteStream({
             metadata,
           });
@@ -92,7 +92,7 @@ module.exports = function GCSStore(globalOpts) {
           });
           stream.on('finish', () => {
             __newFile.extra = file.metadata;
-            __newFile.extra.Location = `https://storage.googleapis.com/${globalOpts.bucket}/${globalOpts.folder}/${__newFile.fd}`;
+            __newFile.extra.Location = `https://storage.googleapis.com/${globalOpts.bucket}/${globalOpts.folder}/${__newFile.fd}.jpg`;
             if (globalOpts.public) file.makePublic();
             resolve();
           });
@@ -100,7 +100,7 @@ module.exports = function GCSStore(globalOpts) {
         }));
         if (globalOpts.resize) {
           allUploads.push(new Promise((resolve, reject) => {
-            const file = bucket.file(`photos/resized/${__newFile.fd}`);
+            const file = bucket.file(`photos/resized/${__newFile.fd}.jpg`);
             const stream = file.createWriteStream({
               metadata,
             });
@@ -120,7 +120,7 @@ module.exports = function GCSStore(globalOpts) {
 
           // Add thumb
           allUploads.push(new Promise((resolve, reject) => {
-            const file = bucket.file(`photos/thumbs/${__newFile.fd}`);
+            const file = bucket.file(`photos/thumbs/${__newFile.fd}.jpg`);
             const stream = file.createWriteStream({
               metadata,
             });
