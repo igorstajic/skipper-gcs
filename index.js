@@ -85,11 +85,17 @@ module.exports = function GCSStore(globalOpts) {
       receiver__._write = function onFile(__newFile, encoding, done) {
         const metadata = {};
         _.defaults(metadata, options.metadata);
-        metadata.contentType = mime.lookup(__newFile.fd);
+        metadata.contentType = __newFile.headers["content-type"];
+        const parts = __newFile.filename.split(".");
+        if (parts.length === 1 || (parts[0] === "" && parts.length === 2)) {
+          // Doesn't have an extension
+          __newFile.filename = `${__newFile.fd}.${mime.extension(metadata.contentType)}`;
+        }
+
         const allUploads = [];
         allUploads.push(
           new Promise((resolve, reject) => {
-            const file = bucket.file(`${globalOpts.folder}/${__newFile.fd}`);
+            const file = bucket.file(`${globalOpts.folder}/${__newFile.filename}`);
             const stream = file.createWriteStream({
               metadata,
             });
@@ -98,7 +104,9 @@ module.exports = function GCSStore(globalOpts) {
             });
             stream.on("finish", () => {
               __newFile.extra = file.metadata;
-              __newFile.extra.Location = `https://storage.googleapis.com/${globalOpts.bucket}/${globalOpts.folder}/${__newFile.fd}`;
+              __newFile.extra.Location = `https://storage.googleapis.com/${globalOpts.bucket}/${globalOpts.folder}/${
+                __newFile.filename
+              }`;
               if (globalOpts.public) file.makePublic();
               resolve();
             });
@@ -108,7 +116,7 @@ module.exports = function GCSStore(globalOpts) {
         if (globalOpts.resize) {
           allUploads.push(
             new Promise((resolve, reject) => {
-              const file = bucket.file(`photos/resized/${__newFile.fd}`);
+              const file = bucket.file(`photos/resized/${__newFile.filename}`);
               const stream = file.createWriteStream({
                 metadata,
               });
@@ -130,7 +138,7 @@ module.exports = function GCSStore(globalOpts) {
           // Add thumb
           allUploads.push(
             new Promise((resolve, reject) => {
-              const file = bucket.file(`photos/thumbs/${__newFile.fd}`);
+              const file = bucket.file(`photos/thumbs/${__newFile.filename}`);
               const stream = file.createWriteStream({
                 metadata,
               });
